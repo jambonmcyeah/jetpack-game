@@ -4,6 +4,7 @@ import typing
 
 import pygame
 
+import helper
 import animation
 
 
@@ -255,15 +256,29 @@ class ScreenSprite(GenericSprite):
     def at_right(self) -> bool:
         return self.right >= self.screen_size[0] - 1
 
+    def outside_top(self):
+        return self.bottom < self.screen_top
+
+    def outside_bottom(self):
+        return self.top > self.screen_bottom
+
+    def outside_left(self):
+        return self.right < self.screen_left
+
+    def outside_right(self):
+        return self.left > self.screen_right
+
+    def outside(self):
+        return self.outside_top() or self.outside_bottom() or self.outside_left() or self.outside_right()
+
     def update(self, *args):
         super().update(*args)
 
-        if self.on_hit_bottom is not None:
-            bottom = self.at_bottom()
-            if not self.__at_bottom and bottom:
-                self.on_hit_bottom()
+        bottom = self.at_bottom()
+        if not self.__at_bottom and bottom:
+            self.on_hit_bottom()
 
-            self.__at_bottom = bottom
+        self.__at_bottom = bottom
 
 
 class InScreenSprite(ScreenSprite):
@@ -278,6 +293,14 @@ class InScreenSprite(ScreenSprite):
             self.top = self.screen_top
         if self.at_bottom():
             self.bottom = self.screen_bottom
+
+
+class KillIfOutOfScreenSprite(ScreenSprite):
+    def update(self, *args):
+        super().update(*args)
+
+        if self.outside():
+            self.kill()
 
 
 class PlayerAnimationState(enum.IntEnum):
@@ -328,3 +351,10 @@ class Player(AnimatedSprite, InScreenSprite, MovingSprite):
 
     def update(self, *args):
         super().update(*args)
+
+
+class Zapper(MovingSprite, KillIfOutOfScreenSprite):
+    IMAGES = [next(helper.load_images(os.path.join("assets", "sprites", "zapper")))]
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)

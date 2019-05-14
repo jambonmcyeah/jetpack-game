@@ -82,7 +82,7 @@ class LoopableIter(typing.Iterator[T]):
 
     def __next__(self) -> T:
         if self.__current_item >= len(self.__loopable.array) or self.__current_item < 0:
-            if self.loop_state.iterations >= 0:
+            if self.loop_state.iterations > 0:
                 self.loop_state.iterations -= 1
 
             if self.loop_state.iterations == 0:

@@ -12,8 +12,8 @@ pygame.init()
 
 def main():
     # D - Display
-    screen: pygame.Surface = pygame.display.set_mode((640, 480))
-    pygame.display.set_caption("Breakout")
+    screen: pygame.Surface = pygame.display.set_mode((888, 480))
+    pygame.display.set_caption("Jetpack Joyride")
 
     # E - Entities
     dx = 15
@@ -43,7 +43,7 @@ def main():
     del background_images
 
     player = sprites.Player(screen=screen, position=(round(screen.get_size()[0] * (1 / 8)), 0))
-    player.flying = True
+    player.flying = False
 
     game_sprites = pygame.sprite.Group(player)
 
@@ -67,7 +67,8 @@ def main():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_UP:
                     player.flying = True
-                if event.key == pygame.K_DOWN:
+            if event.type == pygame.KEYUP:
+                if event.key == pygame.K_UP:
                     player.flying = False
 
         # R - Refresh Screen
