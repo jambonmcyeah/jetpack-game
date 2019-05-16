@@ -4,8 +4,8 @@ import typing
 
 import pygame
 
+import helper
 import sprites
-
 
 pygame.init()
 
@@ -18,15 +18,12 @@ def main():
     # E - Entities
     dx = 15
 
-    background_images: typing.List[pygame.Surface] = []
-
-    path = os.path.join("assets", "background")
-
-    for files in os.walk(path):
-        for file in sorted(files[2]):
-            background_images.append(pygame.image.load(os.path.join(path, file)))
+    background_images: typing.List[pygame.Surface] = list(
+        next(helper.load_images(os.path.join("assets", "background")))
+    )
 
     size = 0
+    background_position = 0
 
     for image in background_images:
         size += image.get_size()[0]
@@ -38,14 +35,12 @@ def main():
         background.blit(image, (position, 0))
         position += image.get_size()[0]
 
-    background_position = 0
-
     del background_images
 
     player = sprites.Player(screen=screen, position=(round(screen.get_size()[0] * (1 / 8)), 0))
     player.flying = False
 
-    game_sprites = pygame.sprite.Group(player)
+    game_sprites = pygame.sprite.OrderedUpdates(player)
 
     # A - Assign Variables
     clock = pygame.time.Clock()

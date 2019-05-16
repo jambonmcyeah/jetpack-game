@@ -354,7 +354,22 @@ class Player(AnimatedSprite, InScreenSprite, MovingSprite):
 
 
 class Zapper(MovingSprite, KillIfOutOfScreenSprite):
-    IMAGES = [next(helper.load_images(os.path.join("assets", "sprites", "zapper")))]
+    IMAGES: typing.List[pygame.Surface] = list(next(helper.load_images(os.path.join("assets", "sprites", "zapper"))))
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, state=True, **kwargs):
+        super().__init__(image=pygame.Surface(0, 0), **kwargs)
+
+        self.state = state
+
+    @property
+    def state(self) -> bool:
+        return self.__state
+
+    @state.setter
+    def state(self, value: bool):
+        if value:
+            self.image = self.IMAGES[1]
+        else:
+            self.image = self.IMAGES[0]
+
+        self.__state = value
