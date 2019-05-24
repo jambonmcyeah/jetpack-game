@@ -6,7 +6,7 @@ import typing
 
 import pygame
 
-SPEED: int = 2
+SPEED: int = 4
 
 T = typing.TypeVar("T")
 

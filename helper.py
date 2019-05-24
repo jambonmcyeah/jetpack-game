@@ -1,4 +1,5 @@
 import os
+import random
 import typing
 
 import pygame
@@ -10,3 +11,7 @@ def load_images(path: str) -> typing.Generator[typing.Generator[pygame.Surface, 
             pygame.image.load(os.path.join(path, file))
             for file in sorted(files[2])
         )
+
+
+def chance(likelihood):
+    return random.random() < likelihood

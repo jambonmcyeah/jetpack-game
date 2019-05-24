@@ -1,4 +1,5 @@
 import os
+import math
 import enum
 import typing
 
@@ -204,6 +205,46 @@ class MovingSprite(GenericSprite):
         self.top += self.dy
 
 
+class AcceleratingSprite(MovingSprite):
+    def __init__(self, acceleration: typing.Tuple[int, int], *groups, **kwargs):
+        super().__init__(velocity=(0, 0), *groups, **kwargs)
+
+        self.acceleration = acceleration
+
+    @property
+    def ddx(self) -> int:
+        return self.__ddx
+
+    @ddx.setter
+    def ddx(self, value: int):
+        self.__ddx: int = value
+
+    @property
+    def ddy(self) -> int:
+        return self.__ddy
+
+    @ddy.setter
+    def ddy(self, value: int):
+        self.__ddy: int = value
+
+    @property
+    def acceleration(self) -> typing.Tuple[int, int]:
+        return self.ddx, self.ddy
+
+    @acceleration.setter
+    def acceleration(self, value: typing.Tuple[int, int]):
+        self.ddx, self.ddy = value
+
+    def update(self, *args):
+        super().update(*args)
+
+        self.dx += self.ddx
+        self.dy += self.ddy
+
+        print(self.dx, self.dy)
+        print(self.ddx, self.ddy)
+
+
 class ScreenSprite(GenericSprite):
     def __init__(self, screen: pygame.Surface, *groups, **kwargs):
         super().__init__(*groups, **kwargs)
@@ -211,6 +252,7 @@ class ScreenSprite(GenericSprite):
         self.screen = screen
 
         self.__at_bottom: bool = False
+        self.__at_top: bool = False
 
     @property
     def screen(self) -> pygame.Surface:
@@ -244,6 +286,9 @@ class ScreenSprite(GenericSprite):
     def on_hit_bottom(self) -> None:
         pass
 
+    def on_hit_top(self) -> None:
+        pass
+
     def at_top(self) -> bool:
         return self.top <= 0
 
@@ -275,10 +320,16 @@ class ScreenSprite(GenericSprite):
         super().update(*args)
 
         bottom = self.at_bottom()
+        top = self.at_top()
+
         if not self.__at_bottom and bottom:
             self.on_hit_bottom()
 
+        if not self.__at_top and top:
+            self.on_hit_top()
+
         self.__at_bottom = bottom
+        self.__at_top = top
 
 
 class InScreenSprite(ScreenSprite):
@@ -303,6 +354,72 @@ class KillIfOutOfScreenSprite(ScreenSprite):
             self.kill()
 
 
+class BackgroundSprite(ScreenSprite):
+
+    def __init__(self, screen: pygame.Surface, images: typing.Iterable[pygame.Surface], speed: int,
+                 direction: bool = True, *groups, **kwargs):
+        """direction: True if horizontal, False if vertical"""
+        super().__init__(image=pygame.Surface(screen.get_size()), position=(0, 0), screen=screen, *groups, **kwargs)
+
+        self.speed: int = speed
+        self.background_position = 0
+        self.direction = direction
+
+        sizes: typing.List[typing.Tuple[int, int]] = list(map(lambda img: img.get_size(), images))
+        widths, heights = (size[0] for size in sizes), (size[1] for size in sizes)
+
+        if self.direction:
+            width, height = sum(widths), max(heights)
+
+            repeat = math.ceil(self.screen_size[0] / width)
+            width *= repeat
+        else:
+            width, height = max(widths), sum(heights)
+
+            repeat = math.ceil(self.screen_size[1] / height)
+            height *= repeat
+
+        self.__background: pygame.Surface = pygame.Surface((width, height))
+
+        x, y = 0, 0
+
+        for _ in range(repeat):
+            for image, size in zip(images, sizes):
+                self.__background.blit(image, (x, y))
+                if self.direction:
+                    x += size[0]
+                else:
+                    y += size[1]
+
+    def update(self, *args):
+        if self.direction:
+            length = self.__background.get_size()[0]
+            minimum = self.screen_left
+            maximum = self.screen_right
+        else:
+            length = self.__background.get_size()[1]
+            minimum = self.screen_top
+            maximum = self.screen_bottom
+
+        if self.background_position > minimum:
+            self.background_position -= length
+
+        if self.background_position + 2 * length < maximum:
+            self.background_position += length
+
+        if self.direction:
+            position = (self.background_position, 0)
+            position2 = (self.background_position + length, 0)
+        else:
+            position = (0, self.background_position)
+            position2 = (self.background_position + length, 0)
+
+        self.image.blit(self.__background, position)
+        self.image.blit(self.__background, position2)
+
+        self.background_position += self.speed
+
+
 class PlayerAnimationState(enum.IntEnum):
     RUNNING = 0
     TAKING_OFF = 1
@@ -311,7 +428,7 @@ class PlayerAnimationState(enum.IntEnum):
     DEAD = 4
 
 
-class Player(AnimatedSprite, InScreenSprite, MovingSprite):
+class Player(AnimatedSprite, InScreenSprite, AcceleratingSprite):
     ANIMATION = animation.Animation.from_directory(
         os.path.join("assets", "sprites", "player"),
         section_loopstates=[
@@ -323,43 +440,60 @@ class Player(AnimatedSprite, InScreenSprite, MovingSprite):
         ]
     )
 
-    FLY_SPEED = -15
-    FALL_SPEED = 15
+    FLY_ACCELERATION = -0.5
+    FALL_ACCELERATION = 0.5
 
     def __init__(self, **kwargs):
         super().__init__(anime=self.ANIMATION,
-                         velocity=(0, self.FALL_SPEED),
+                         acceleration=(0, self.FALL_ACCELERATION),
                          kill_when_finished=True,
                          starting_section=PlayerAnimationState.FALLING,
                          **kwargs)
 
     def on_hit_bottom(self) -> None:
-        self.restart((PlayerAnimationState.RUNNING, None))
+        if not self.flying:
+            self.restart((PlayerAnimationState.RUNNING, None))
+
+        self.dy = 0
+
+    def on_hit_top(self) -> None:
+        self.dy = 0
 
     @property
     def flying(self) -> bool:
-        return self.dy < 0
+        return self.ddy < 0
 
     @flying.setter
     def flying(self, value: bool):
         if value:
-            self.dy = self.FLY_SPEED
+            self.ddy = self.FLY_ACCELERATION
             self.restart((PlayerAnimationState.TAKING_OFF, None))
         else:
-            self.dy = self.FALL_SPEED
+            self.ddy = self.FALL_ACCELERATION
             self.restart((PlayerAnimationState.FALLING, None))
 
     def update(self, *args):
         super().update(*args)
 
+        if self.at_top() and self.ddy < 0:
+            self.dy = 0
+            self.ddy = 0
+        elif self.at_bottom() and self.ddy > 0:
+            self.dy = 0
+            self.ddy = 0
+
 
 class Zapper(MovingSprite, KillIfOutOfScreenSprite):
-    IMAGES: typing.List[pygame.Surface] = list(next(helper.load_images(os.path.join("assets", "sprites", "zapper"))))
+    IMAGES: typing.Tuple[pygame.Surface, ...] = tuple(
+        next(helper.load_images(os.path.join("assets", "sprites", "zapper")))
+    )
 
-    def __init__(self, state=True, **kwargs):
-        super().__init__(image=pygame.Surface(0, 0), **kwargs)
+    def __init__(self, state=True, direction=True, *groups, **kwargs):
+        """direction: horizontal if True, else vertical"""
+        super().__init__(image=self.IMAGES[0], *groups, **kwargs)
 
         self.state = state
+        self.direction = direction
 
     @property
     def state(self) -> bool:
@@ -367,9 +501,30 @@ class Zapper(MovingSprite, KillIfOutOfScreenSprite):
 
     @state.setter
     def state(self, value: bool):
-        if value:
-            self.image = self.IMAGES[1]
-        else:
-            self.image = self.IMAGES[0]
-
         self.__state = value
+        self.__update_image()
+
+    @property
+    def direction(self) -> bool:
+        return self.__direction
+
+    @direction.setter
+    def direction(self, value: bool):
+        self.__direction = value
+        self.__update_image()
+
+    def __update_image(self):
+        try:
+            if self.state:
+                if self.direction:
+                    self.image = self.IMAGES[1]
+                else:
+                    self.image = self.IMAGES[3]
+            else:
+                if self.direction:
+                    self.image = self.IMAGES[0]
+                else:
+                    self.image = self.IMAGES[2]
+
+        except AttributeError:
+            pass
