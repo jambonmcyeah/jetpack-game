@@ -1,5 +1,6 @@
 import os
 import math
+import random
 import enum
 import typing
 
@@ -8,16 +9,20 @@ import pygame
 import helper
 import animation
 
+pygame.font.init()
+
 
 class GenericSprite(pygame.sprite.Sprite):
     """A class to represent generic sprites"""
 
-    def __init__(self, image: pygame.Surface, position: typing.Tuple[int, int], *groups: pygame.sprite.Group, **kwargs):
+    def __init__(self, image: pygame.Surface, position: typing.Tuple[int, int], layer: int = 0,
+                 *groups: pygame.sprite.Group, **kwargs):
         """Initializer for the GenericSprite class, sets the image and rect instance variables"""
         super().__init__(*groups)
 
         self.image = image
         self.position = position
+        self.layer = layer
 
     @property
     def image(self) -> pygame.Surface:
@@ -32,12 +37,17 @@ class GenericSprite(pygame.sprite.Sprite):
 
         self.__image: pygame.Surface = value
         self.__rect: pygame.Rect = self.__image.get_rect()
+        self.__mask: pygame.mask.Mask = pygame.mask.from_surface(self.image)
 
         self.position = position
 
     @property
     def rect(self) -> pygame.Rect:
         return self.__rect
+
+    @property
+    def mask(self) -> pygame.mask.Mask:
+        return self.__mask
 
     @property
     def size(self) -> typing.Tuple[int, int]:
@@ -87,6 +97,14 @@ class GenericSprite(pygame.sprite.Sprite):
     def bottom(self, value: int):
         self.rect.bottom = value
 
+    @property
+    def layer(self) -> int:
+        return self._layer
+
+    @layer.setter
+    def layer(self, value: int):
+        self._layer = value
+
     def horizontally_center(self, start: int, end: int) -> None:
         """Horizontally center this GenericSprite between two x values"""
         self.left = round(((end + start) - self.size[0]) / 2)
@@ -120,7 +138,7 @@ class AnimatedSprite(GenericSprite):
         self.animation_loop_state = animation_loop_state
 
         self.__finished: bool = False
-        self.__current_frame: int = 0
+        self.__frames_passed: int = 0
         self.__animation_iter: typing.Optional[animation.LoopableIter[animation.Section]] = None
         self.__section_iter: typing.Optional[animation.LoopableIter[pygame.Surface]] = None
 
@@ -133,7 +151,7 @@ class AnimatedSprite(GenericSprite):
     def restart(self, starting_frame: typing.Tuple[typing.Optional[int], typing.Optional[int]] = (None, None)):
         self.__finished = False
 
-        self.__current_frame = 0
+        self.__frames_passed = 0
         self.__animation_iter = animation.LoopableIter(self.animation, self.animation_loop_state, starting_frame[0])
 
         self.next_section(frame=starting_frame[1])
@@ -151,20 +169,19 @@ class AnimatedSprite(GenericSprite):
 
             except StopIteration:
                 self.__finished = True
-                print("END!!!!")
 
     def update(self, *args):
         super().update(*args)
         if not self.finished:
-            if self.__current_frame >= self.speed:
+            if self.__frames_passed >= self.speed:
                 if not self.__finished:
                     try:
                         self.image = next(self.__section_iter)
                     except StopIteration:
                         self.next_section()
-                self.__current_frame = 0
+                self.__frames_passed = 0
             else:
-                self.__current_frame += 1
+                self.__frames_passed += 1
 
 
 class MovingSprite(GenericSprite):
@@ -240,9 +257,6 @@ class AcceleratingSprite(MovingSprite):
 
         self.dx += self.ddx
         self.dy += self.ddy
-
-        print(self.dx, self.dy)
-        print(self.ddx, self.ddy)
 
 
 class ScreenSprite(GenericSprite):
@@ -354,16 +368,132 @@ class KillIfOutOfScreenSprite(ScreenSprite):
             self.kill()
 
 
+class TextSprite(GenericSprite):
+    def __init__(self,
+                 font: pygame.font.Font,
+                 text: str,
+                 color: pygame.Color = pygame.Color(0, 0, 0, 0),
+                 background_color: typing.Optional[pygame.Color] = None,
+                 antialias: bool = False,
+                 *groups,
+                 **kwargs):
+        super().__init__(image=pygame.Surface((0, 0)), *groups, **kwargs)
+
+        self.font = font
+        self.text = text
+        self.color = color
+        self.background_color = background_color
+        self.antialias = antialias
+
+    @property
+    def font(self) -> pygame.font.Font:
+        return self.__font
+
+    @font.setter
+    def font(self, value: pygame.font.Font):
+        self.__font: pygame.font.Font = value
+        self.render()
+
+    @property
+    def text(self) -> str:
+        return self.__text
+
+    @text.setter
+    def text(self, value: str):
+        self.__text: str = value
+        self.render()
+
+    @property
+    def color(self) -> pygame.Color:
+        return self.__color
+
+    @color.setter
+    def color(self, value: pygame.Color):
+        self.__color: pygame.Color = value
+        self.render()
+
+    @property
+    def background_color(self) -> pygame.Color:
+        return self.__background_color
+
+    @background_color.setter
+    def background_color(self, value: pygame.Color):
+        self.__background_color: pygame.Color = value
+        self.render()
+
+    @property
+    def antialias(self) -> bool:
+        return self.__antialias
+
+    @antialias.setter
+    def antialias(self, value: bool):
+        self.__antialias = value
+        self.render()
+
+    def render(self):
+        try:
+            self.image = self.font.render(self.text, self.antialias, self.color, self.background_color)
+        except AttributeError:
+            pass
+
+
+class Scoreboard(TextSprite):
+    def __init__(self,
+                 font: pygame.font.Font = helper.default_font(32),
+                 text: str = "",
+                 color: pygame.Color = pygame.Color(255, 255, 255),
+                 antialias: bool = True,
+                 position: typing.Tuple[int, int] = (0, 0),
+                 pixels: int = 0,
+                 unit: int = 50,
+                 score_text: str = "Distance: %d",
+                 *groups, **kwargs):
+        super().__init__(
+            font=font,
+            text=text,
+            color=color,
+            antialias=antialias,
+            position=position,
+            layer=100,
+            *groups,
+            **kwargs
+        )
+
+        self.unit: int = unit
+        self.score_text: str = score_text
+        self.pixels = pixels
+
+    @property
+    def pixels(self) -> int:
+        return self.__pixels
+
+    @pixels.setter
+    def pixels(self, value: int):
+        self.__pixels: int = value
+
+        self.text = self.score_text % round(self.distance)
+
+    @property
+    def distance(self) -> float:
+        return self.pixels / self.unit
+
+    @distance.setter
+    def distance(self, value: float):
+        self.pixels = round(value * self.unit)
+
+
 class BackgroundSprite(ScreenSprite):
 
     def __init__(self, screen: pygame.Surface, images: typing.Iterable[pygame.Surface], speed: int,
                  direction: bool = True, *groups, **kwargs):
         """direction: True if horizontal, False if vertical"""
-        super().__init__(image=pygame.Surface(screen.get_size()), position=(0, 0), screen=screen, *groups, **kwargs)
+        super().__init__(image=pygame.Surface(screen.get_size(), pygame.SRCALPHA), position=(0, 0), screen=screen,
+                         layer=-1, *groups,
+                         **kwargs)
 
         self.speed: int = speed
-        self.background_position = 0
-        self.direction = direction
+        self.background_position: int = 0
+        self.direction: bool = direction
 
         sizes: typing.List[typing.Tuple[int, int]] = list(map(lambda img: img.get_size(), images))
         widths, heights = (size[0] for size in sizes), (size[1] for size in sizes)
@@ -379,7 +509,7 @@ class BackgroundSprite(ScreenSprite):
             repeat = math.ceil(self.screen_size[1] / height)
             height *= repeat
 
-        self.__background: pygame.Surface = pygame.Surface((width, height))
+        self.__background: pygame.Surface = pygame.Surface((width, height), pygame.SRCALPHA)
 
         x, y = 0, 0
 
@@ -414,6 +544,7 @@ class BackgroundSprite(ScreenSprite):
             position = (0, self.background_position)
             position2 = (self.background_position + length, 0)
 
+        self.image.fill(pygame.SRCALPHA)
         self.image.blit(self.__background, position)
         self.image.blit(self.__background, position2)
 
@@ -436,7 +567,7 @@ class Player(AnimatedSprite, InScreenSprite, AcceleratingSprite):
             animation.LoopState(iterations=1),
             animation.LoopState(iterations=-1),
             animation.LoopState(loop_type=animation.LoopType.REPEAT_LAST_FRAME, iterations=-1),
-            animation.LoopState(iterations=1)
+            animation.LoopState(loop_type=animation.LoopType.REPEAT_LAST_FRAME, iterations=-1)
         ]
     )
 
@@ -450,8 +581,10 @@ class Player(AnimatedSprite, InScreenSprite, AcceleratingSprite):
                          starting_section=PlayerAnimationState.FALLING,
                          **kwargs)
 
+        self.dead = False
+
     def on_hit_bottom(self) -> None:
-        if not self.flying:
+        if not self.dead and not self.flying:
             self.restart((PlayerAnimationState.RUNNING, None))
 
         self.dy = 0
@@ -465,22 +598,34 @@ class Player(AnimatedSprite, InScreenSprite, AcceleratingSprite):
 
     @flying.setter
     def flying(self, value: bool):
+        if not self.dead:
+            if value:
+                self.ddy = self.FLY_ACCELERATION
+                self.restart((PlayerAnimationState.TAKING_OFF, None))
+            else:
+                self.ddy = self.FALL_ACCELERATION
+                self.restart((PlayerAnimationState.FALLING, None))
+
+    @property
+    def dead(self) -> bool:
+        return self.__dead
+
+    @dead.setter
+    def dead(self, value: bool):
+        self.__dead: bool = value
         if value:
-            self.ddy = self.FLY_ACCELERATION
-            self.restart((PlayerAnimationState.TAKING_OFF, None))
-        else:
+            self.restart((PlayerAnimationState.DEAD, None))
             self.ddy = self.FALL_ACCELERATION
-            self.restart((PlayerAnimationState.FALLING, None))
 
     def update(self, *args):
         super().update(*args)
-
-        if self.at_top() and self.ddy < 0:
-            self.dy = 0
-            self.ddy = 0
-        elif self.at_bottom() and self.ddy > 0:
-            self.dy = 0
-            self.ddy = 0
+        if not self.dead:
+            if self.at_top() and self.ddy < 0:
+                self.dy = 0
+                self.ddy = 0
+            elif self.at_bottom() and self.ddy > 0:
+                self.dy = 0
+                self.ddy = 0
 
 
 class Zapper(MovingSprite, KillIfOutOfScreenSprite):
@@ -488,12 +633,19 @@ class Zapper(MovingSprite, KillIfOutOfScreenSprite):
         next(helper.load_images(os.path.join("assets", "sprites", "zapper")))
     )
 
-    def __init__(self, state=True, direction=True, *groups, **kwargs):
+    def __init__(self, state: bool = True, direction: bool = True, *groups, **kwargs):
         """direction: horizontal if True, else vertical"""
         super().__init__(image=self.IMAGES[0], *groups, **kwargs)
 
         self.state = state
         self.direction = direction
+
+    @classmethod
+    def random_spawn(cls, screen: pygame.Surface, *groups, **kwargs):
+        instance = cls(screen=screen, position=(0, 0), direction=helper.chance(0.5), *groups, **kwargs)
+        instance.position = (screen.get_size()[0] - 1, random.randrange(0, screen.get_size()[1] - instance.size[1]))
+
+        return instance
 
     @property
     def state(self) -> bool:
@@ -501,7 +653,7 @@ class Zapper(MovingSprite, KillIfOutOfScreenSprite):
 
     @state.setter
     def state(self, value: bool):
-        self.__state = value
+        self.__state: bool = value
         self.__update_image()
 
     @property
@@ -510,7 +662,7 @@ class Zapper(MovingSprite, KillIfOutOfScreenSprite):
 
     @direction.setter
     def direction(self, value: bool):
-        self.__direction = value
+        self.__direction: bool = value
         self.__update_image()
 
     def __update_image(self):
